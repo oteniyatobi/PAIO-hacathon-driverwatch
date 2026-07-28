@@ -5,20 +5,75 @@
 const MODEL_URL = "./model/";
 
 let model, webcam, maxPredictions;
+
+// Theme Management
+function toggleTheme() {
+    const isLight = document.getElementById('theme-toggle').checked;
+    const theme = isLight ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('dw-theme', theme);
+    
+    // Update map if it exists
+    if (typeof updateMapTheme === 'function') {
+        updateMapTheme(theme);
+    }
+    
+    logEvent(`SYS: Theme switched to ${theme.toUpperCase()} mode.`, 't-info');
+}
+
+function syncThemeUI() {
+    const theme = localStorage.getItem('dw-theme') || 'dark';
+    const toggle = document.getElementById('theme-toggle');
+    if (toggle) toggle.checked = (theme === 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    const darkOpt  = document.getElementById('theme-opt-dark');
+    const lightOpt = document.getElementById('theme-opt-light');
+    if (darkOpt)  darkOpt.classList.toggle('active',  theme === 'dark');
+    if (lightOpt) lightOpt.classList.toggle('active', theme === 'light');
+}
+
+// Hook into Profile render
+function renderProfile() {
+    const user = auth.currentUser;
+    if (!user || !currentUserData) return;
+
+    const profName = document.getElementById('prof-name');
+    const profEmail = document.getElementById('prof-email');
+    const profSex = document.getElementById('prof-sex');
+    const profPhone = document.getElementById('prof-phone');
+    const profEC = document.getElementById('prof-ec');
+
+    if (profName) profName.innerText = currentUserData.driverName || '---';
+    if (profEmail) profEmail.innerText = user.email || '---';
+    if (profSex) profSex.innerText = currentUserData.gender || '---';
+    if (profPhone) profPhone.innerText = currentUserData.phoneNumber || '---';
+    if (profEC) profEC.innerText = currentUserData.emergencyContact?.name 
+        ? `${currentUserData.emergencyContact.name} (${currentUserData.emergencyContact.phone})`
+        : '---';
+
+    const initials = (currentUserData.driverName || '?').split(' ').map(n => n[0]).join('').toUpperCase();
+    const avatar = document.getElementById('profile-avatar-initials');
+    const dispName = document.getElementById('profile-display-name');
+    if (avatar) avatar.innerText = initials.substring(0, 2);
+    if (dispName) dispName.innerText = (currentUserData.driverName || '').toUpperCase();
+    
+    syncThemeUI(); // Ensure toggle matches saved state
+}
+
 let isModelLoaded = false;
 let modelLoadPromise = null; // Singleton promise to prevent race conditions
 let isRunning = false;
 let lastPredictionTime = 0;
-const PREDICTION_INTERVAL_MS = 100; // 10 checks per second is plenty for safety & fast for CPU
+const PREDICTION_INTERVAL_MS = 150; // Slower default to save CPU
 /** Detect native Capacitor / Android environment for performance tuning */
 const _isMobileApp = typeof window !== 'undefined' && window.Capacitor &&
     typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform();
 const _isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 const IS_MOBILE = _isMobileApp || _isMobileUA;
-/** On mobile, throttle the canvas mirror to ~15fps (67ms) to cut GPU load in half */
-const MIRROR_THROTTLE_MS = IS_MOBILE ? 67 : 0;
-/** On mobile, predict every 250ms (4/sec) instead of 100ms (10/sec) */
-const MOBILE_PREDICTION_MS = IS_MOBILE ? 250 : PREDICTION_INTERVAL_MS;
+/** On mobile, throttle the canvas mirror to ~10fps (100ms) to significantly cut GPU load */
+const MIRROR_THROTTLE_MS = IS_MOBILE ? 100 : 0;
+/** On mobile, predict every 350ms (3/sec) instead of 150ms (7/sec) */
+const MOBILE_PREDICTION_MS = IS_MOBILE ? 350 : PREDICTION_INTERVAL_MS;
 /** Webcam resolution — use standard ideal for better hardware compatibility, downscale in canvas */
 const CAM_W = 400;
 const CAM_H = 300;
@@ -526,12 +581,18 @@ auth.onAuthStateChanged(async (user) => {
 
                 // Trigger model pre-load for faster startup
                 preWarmModel();
+
+                // ── HIDE SPLASH GUARD ──
+                document.body.classList.add('auth-ready');
+                if (window.__clearSplashTimer) window.__clearSplashTimer();
             } else {
                 console.warn("User authenticated but profile document missing. Opening setup...");
                 window.location.replace('login.html?setup=1');
             }
         } catch (e) {
             console.error("Error loading user data from Firestore:", e);
+            // Even on error, we should probably allow the user to see the UI or retry
+            document.body.classList.add('auth-ready');
         }
     }
 });
@@ -765,6 +826,7 @@ async function init() {
         if (startupMessage) startupMessage.style.display = 'none';
 
         const labelContainer = document.getElementById("label-container");
+        if (!labelContainer) return;
         labelContainer.innerHTML = '';
         for (let i = 0; i < maxPredictions; i++) {
             const className = model.getClassLabels()[i].toUpperCase();
@@ -1009,6 +1071,8 @@ function setStatus(stateCode, title, detail) {
         bigStatusLabel.className = `status-title ${stateCode}`;
     }
     if (bigStatusSub) bigStatusSub.innerText = detail;
+    const specVal = document.getElementById('header-status-val');
+    if (specVal) specVal.innerText = title;
 }
 
 function triggerAlarm() {
@@ -1131,25 +1195,9 @@ async function startRealDispatch(isImpact = false) {
         if (transferProgress) transferProgress.style.width = '20%';
         logEvent('DISPATCH: Acquiring live GPS and scanning for nearby emergency services...', 't-info');
 
-        // Build location data — use cached position or request a fresh one
-        let lat = currentGeoPosition ? Number(currentGeoPosition.lat) : null;
-        let lng = currentGeoPosition ? Number(currentGeoPosition.lng) : null;
-
-        if (!lat || !lng) {
-            try {
-                const pos = await new Promise((resolve, reject) =>
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true, timeout: 8000, maximumAge: 15000
-                    })
-                );
-                lat = pos.coords.latitude;
-                lng = pos.coords.longitude;
-                logEvent('DISPATCH: GPS fix acquired for emergency scan.', 't-info');
-            } catch (_) {
-                logEvent('DISPATCH: GPS unavailable — location services may be disabled.', 't-warn');
-            }
-        }
-
+        // Build location data
+        const lat = currentGeoPosition ? currentGeoPosition.lat : null;
+        const lng = currentGeoPosition ? currentGeoPosition.lng : null;
         const mapsLink = lat && lng
             ? `https://maps.google.com/?q=${lat},${lng}`
             : 'Location unavailable';
@@ -1177,8 +1225,6 @@ async function startRealDispatch(isImpact = false) {
                 nearbyServicesHTML = '<div style="color:var(--acc-muted)">Could not scan nearby services.</div>';
                 logEvent('GPS SCAN: Could not retrieve nearby services.', 't-warn');
             }
-        } else {
-            nearbyServicesHTML = '<div style="color:var(--acc-muted)">GPS unavailable — enable location services.</div>';
         }
 
         // Inject results into the overlay
@@ -1244,35 +1290,25 @@ async function startRealDispatch(isImpact = false) {
 
 async function scanNearbyEmergencyServices(lat, lng) {
     const radius = 5000; // 5km radius
-    // Query node/way/relation so amenities mapped as areas (ways) are included.
-    // "out center" returns a .center.lat/.center.lon for ways/relations.
     const query = `
-        [out:json][timeout:25];
+        [out:json][timeout:10];
         (
           node["amenity"="hospital"](around:${radius},${lat},${lng});
-          way["amenity"="hospital"](around:${radius},${lat},${lng});
           node["amenity"="police"](around:${radius},${lat},${lng});
-          way["amenity"="police"](around:${radius},${lat},${lng});
           node["amenity"="fire_station"](around:${radius},${lat},${lng});
-          way["amenity"="fire_station"](around:${radius},${lat},${lng});
           node["emergency"="ambulance_station"](around:${radius},${lat},${lng});
-          way["emergency"="ambulance_station"](around:${radius},${lat},${lng});
         );
-        out center 10;
+        out body 5;
     `.trim();
 
     const response = await fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query)
+        body: query
     });
     const data = await response.json();
     const elements = data.elements || [];
 
-    // nodes have el.lat/el.lon; ways/relations have el.center.lat/el.center.lon
-    const withCoords = elements.filter((el) =>
-        (el.lat != null && el.lon != null) || (el.center && el.center.lat != null)
-    );
+    const withCoords = elements.filter((el) => el.lat != null && el.lon != null);
     if (withCoords.length === 0) {
         return '<div style="color:var(--acc-muted)">No services found within 5km.</div>';
     }
@@ -1280,13 +1316,13 @@ async function scanNearbyEmergencyServices(lat, lng) {
     return withCoords.slice(0, 5).map((el) => {
         const tags = el.tags || {};
         const rawName = tags.name || tags.amenity || 'Unknown Service';
-        const rawType = (tags.amenity || tags.emergency || '').toUpperCase().replace(/_/g, ' ');
+        const rawType = (tags.amenity || tags.emergency || '').toUpperCase().replace('_', ' ');
         const rawPhone = tags.phone || tags['contact:phone'] || '';
         const name = escapeHtml(rawName);
         const type = escapeHtml(rawType);
         const phone = escapeHtml(rawPhone);
-        const elLat = (el.lat ?? el.center.lat).toFixed(5);
-        const elLng = (el.lon ?? el.center.lon).toFixed(5);
+        const elLat = el.lat.toFixed(5);
+        const elLng = el.lon.toFixed(5);
         const link = `https://maps.google.com/?q=${elLat},${elLng}`;
         return `<div style="padding: 0.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
             <span style="color:var(--stat-warn);">[${type}]</span> ${name}
@@ -2139,8 +2175,10 @@ function stopSystem() {
     }
     startBtn.disabled = false;
     stopBtn.disabled = true;
+    if (navSystemTag) {
         navSystemTag.className = 'sys-badge';
         navSystemTag.innerHTML = `READY`;
+    }
     
     setStatus('awake', 'MONITORING OFFLINE', 'Tap start to begin a new session.'); 
     logEvent('Session ended. Monitoring stopped.', 't-info');
@@ -2160,10 +2198,7 @@ function switchTab(name) {
     const panel = document.getElementById('tab-' + name);
     const btn   = document.getElementById('nav-tab-' + name);
     
-    if (panel) {
-        panel.style.display = 'flex'; // Ensure display flex before animation
-        setTimeout(() => panel.classList.add('active'), 10);
-    }
+    if (panel) panel.classList.add('active');
     if (btn) btn.classList.add('active');
     
     if (name === 'map' && typeof onMapTabOpened === 'function') {
@@ -2308,5 +2343,42 @@ async function signOut() {
         console.error('Sign out error:', e);
     }
 }
+
+// ── PWA Installation Logic ────────────────────────────────
+let deferredPrompt;
+const installBtn = document.getElementById('btn-install-pwa');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent Chrome 67 and earlier from automatically showing the prompt
+    e.preventDefault();
+    // Stash the event so it can be triggered later.
+    deferredPrompt = e;
+    // Show the install button in the Profile tab
+    if (installBtn) {
+        installBtn.style.display = 'block';
+        logEvent('PWA: App is ready for installation.', 't-info');
+    }
+});
+
+if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        // Show the native install prompt
+        deferredPrompt.prompt();
+        // Wait for the user to respond
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`PWA: Install outcome: ${outcome}`);
+        // Clear the deferred prompt so it can't be used again
+        deferredPrompt = null;
+        // Hide the button
+        installBtn.style.display = 'none';
+    });
+}
+
+window.addEventListener('appinstalled', () => {
+    console.log('PWA: DriverWatch was installed successfully.');
+    if (installBtn) installBtn.style.display = 'none';
+    logEvent('PWA: App installed successfully!', 't-succ');
+});
 
 

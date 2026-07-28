@@ -1071,6 +1071,8 @@ function setStatus(stateCode, title, detail) {
         bigStatusLabel.className = `status-title ${stateCode}`;
     }
     if (bigStatusSub) bigStatusSub.innerText = detail;
+    const specVal = document.getElementById('header-status-val');
+    if (specVal) specVal.innerText = title;
 }
 
 function triggerAlarm() {
