@@ -557,43 +557,71 @@ function attachVaultFirestoreListener() {
 auth.onAuthStateChanged(async (user) => {
     if (!user) {
         detachVaultFirestoreListener();
-        console.log("No authenticated user found. Redirecting to login...");
-        window.location.replace('login.html');
-    } else {
-        try {
-            console.log("Authenticated user found:", user.uid);
-            const doc = await db.collection('users').doc(user.uid).get();
-            if (doc.exists) {
-                currentUserData = doc.data();
-                console.log("User data loaded successfully.");
-                const navOp = document.getElementById('nav-operator-name');
-                if (navOp) navOp.innerText = currentUserData.driverName.toUpperCase();
+        console.log("No authenticated user found. Starting app without the login gate.");
+        currentUserData = {
+            driverName: 'OPERATOR',
+            emergencyContact: {}
+        };
 
-                const dispName = document.getElementById('dispatch-contact-name');
-                const dispPhone = document.getElementById('dispatch-contact-phone');
-                const ec = currentUserData.emergencyContact;
-                if (dispName && ec?.name) dispName.innerText = ec.name.toUpperCase();
-                if (dispPhone) dispPhone.innerText = ec?.phone || '---';
-                
-                // Start cloud vault listener immediately (don't wait for IndexedDB)
-                attachVaultFirestoreListener();
-                initDB().catch(e => console.warn('initDB failed on startup:', e));
+        const navOp = document.getElementById('nav-operator-name');
+        if (navOp) navOp.innerText = 'OPERATOR';
 
-                // Trigger model pre-load for faster startup
-                preWarmModel();
+        const dispName = document.getElementById('dispatch-contact-name');
+        const dispPhone = document.getElementById('dispatch-contact-phone');
+        if (dispName) dispName.innerText = 'DISPATCH';
+        if (dispPhone) dispPhone.innerText = '---';
 
-                // ── HIDE SPLASH GUARD ──
-                document.body.classList.add('auth-ready');
-                if (window.__clearSplashTimer) window.__clearSplashTimer();
-            } else {
-                console.warn("User authenticated but profile document missing. Opening setup...");
-                window.location.replace('login.html?setup=1');
-            }
-        } catch (e) {
-            console.error("Error loading user data from Firestore:", e);
-            // Even on error, we should probably allow the user to see the UI or retry
+        initDB().catch(e => console.warn('initDB failed on startup:', e));
+        preWarmModel();
+        document.body.classList.add('auth-ready');
+        if (window.__clearSplashTimer) window.__clearSplashTimer();
+        return;
+    }
+
+    try {
+        console.log("Authenticated user found:", user.uid);
+        const doc = await db.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+            currentUserData = doc.data();
+            console.log("User data loaded successfully.");
+            const navOp = document.getElementById('nav-operator-name');
+            if (navOp) navOp.innerText = (currentUserData.driverName || 'OPERATOR').toUpperCase();
+
+            const dispName = document.getElementById('dispatch-contact-name');
+            const dispPhone = document.getElementById('dispatch-contact-phone');
+            const ec = currentUserData.emergencyContact;
+            if (dispName && ec?.name) dispName.innerText = ec.name.toUpperCase();
+            if (dispPhone) dispPhone.innerText = ec?.phone || '---';
+            
+            // Start cloud vault listener immediately (don't wait for IndexedDB)
+            attachVaultFirestoreListener();
+            initDB().catch(e => console.warn('initDB failed on startup:', e));
+
+            // Trigger model pre-load for faster startup
+            preWarmModel();
+
+            // ── HIDE SPLASH GUARD ──
             document.body.classList.add('auth-ready');
+            if (window.__clearSplashTimer) window.__clearSplashTimer();
+        } else {
+            console.warn("User profile document missing. Continuing with local defaults.");
+            currentUserData = {
+                driverName: 'OPERATOR',
+                emergencyContact: {}
+            };
+            const navOp = document.getElementById('nav-operator-name');
+            if (navOp) navOp.innerText = 'OPERATOR';
+            document.body.classList.add('auth-ready');
+            if (window.__clearSplashTimer) window.__clearSplashTimer();
         }
+    } catch (e) {
+        console.error("Error loading user data from Firestore:", e);
+        // Even on error, we should probably allow the user to see the UI or retry
+        currentUserData = {
+            driverName: 'OPERATOR',
+            emergencyContact: {}
+        };
+        document.body.classList.add('auth-ready');
     }
 });
 
@@ -2338,7 +2366,7 @@ startSystem = async function() {
 async function signOut() {
     try {
         await auth.signOut();
-        window.location.replace('login.html');
+        window.location.replace('index.html');
     } catch (e) {
         console.error('Sign out error:', e);
     }

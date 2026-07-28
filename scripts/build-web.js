@@ -13,9 +13,7 @@ const DEST = path.join(ROOT, 'www');
 // Web assets to include in the mobile app
 const ASSETS = [
     'index.html',
-    'login.html',
     'app.js',
-    'login.js',
     'firebase-config.js',
     'map.js',
     'style.css',

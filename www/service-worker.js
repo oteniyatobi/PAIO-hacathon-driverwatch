@@ -9,10 +9,8 @@ const CACHE_NAME = 'driverwatch-v3';
 const ASSETS = [
     '/',
     '/index.html',
-    '/login.html',
     '/style.css',
     '/app.js',
-    '/login.js',
     '/map.js',
     '/firebase-config.js',
     '/favicon.png',
