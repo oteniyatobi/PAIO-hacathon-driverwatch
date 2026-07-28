@@ -325,3 +325,4 @@ document.getElementById('onboarding-view').addEventListener('submit', async (e) 
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 });
+

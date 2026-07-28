@@ -417,3 +417,4 @@ function onMapTabOpened() {
     if (!mapInitialized) initMap();
     else dwMap.resize();
 }
+

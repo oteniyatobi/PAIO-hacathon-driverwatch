@@ -39,3 +39,4 @@ function renderProfile() {
     
     syncThemeUI(); // Ensure toggle matches saved state
 }
+

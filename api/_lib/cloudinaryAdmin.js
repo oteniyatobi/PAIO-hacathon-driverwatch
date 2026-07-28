@@ -35,3 +35,4 @@ function generateSignature(params, apiSecret) {
 }
 
 module.exports = { getCloudinaryConfig, generateSignature };
+

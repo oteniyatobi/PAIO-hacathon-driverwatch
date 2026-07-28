@@ -17,3 +17,4 @@ function getSupabaseAdmin() {
 }
 
 module.exports = { getSupabaseAdmin };
+

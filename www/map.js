@@ -449,3 +449,4 @@ function onMapTabOpened() {
         setTimeout(() => { if (dwMap) dwMap.invalidateSize(); }, 120);
     }
 }
+

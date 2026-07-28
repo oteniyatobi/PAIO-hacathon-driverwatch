@@ -60,3 +60,4 @@ for (const asset of ASSETS) {
 }
 
 console.log(`\nBuild complete — ${copied} assets copied to www/`);
+

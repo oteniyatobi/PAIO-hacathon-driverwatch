@@ -2379,3 +2379,4 @@ window.addEventListener('appinstalled', () => {
     logEvent('PWA: App installed successfully!', 't-succ');
 });
 
+

@@ -124,3 +124,4 @@ if __name__ == "__main__":
     augment_images("training_data/original_neutral", "training_data/boosted_neutral")
     
     print("\nDone! Upload the 'boosted' folders into Teachable Machine.")
+

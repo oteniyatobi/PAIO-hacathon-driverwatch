@@ -87,3 +87,4 @@ MANUALLY
 ---
 
 *This project is a concept-to-prototype safe-driving solution demonstrating the powerful integration of AI, modern front-end development, and media processing.*
+
