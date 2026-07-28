@@ -5,7 +5,6 @@ android/app/build/
 android/.gradle/
 android/.idea/
 android/app/google-services*.json
-.env
 .DS_Store
 __pycache__/
 *.diff
@@ -13,3 +12,8 @@ __pycache__/
 .claude/
 
 
+config.bat
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
